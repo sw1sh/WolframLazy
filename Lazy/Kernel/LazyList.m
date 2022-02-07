@@ -6,9 +6,13 @@ PackageExport["LazyListQ"]
 PackageExport["LazyListForm"]
 PackageExport["LazyEval"]
 
+PackageExport["Clone"]
+PackageExport["Repeat"]
 PackageExport["LazyDrop"]
+PackageExport["LazyJoin"]
 PackageExport["LazyRange"]
 PackageExport["LazyTable"]
+PackageExport["LazyParallelMap"]
 PackageExport["Zip"]
 PackageExport["ZipWith"]
 PackageExport["FoldRight"]
@@ -64,28 +68,34 @@ Drop[Cons[x_, l_], n_] ^:= If[n <= 0, Cons[x, l], Drop[l, n - 1]]
 
 
 Cons /: Part[l_Cons, from_ ;; to_] := Take[Drop[l, from - 1], to - from + 1]
-Cons /: Part[l_Cons, n_Integer?Positive] := First[Drop[l, n - 1]]
+Cons /: Part[l_Cons, n_Integer ? Positive] := First[Drop[l, n - 1]]
 
 
 TakeDrop[Cons[], _] ^:= {Cons[], Cons[]}
-TakeDrop[Cons[x_, l_], n_] ^:= If[n <= 0, {Cons[], Cons[x, l]}, MapAt[Prepend[x], TakeDrop[l, n - 1], {1}]]
+TakeDrop[Cons[x_, l_], n_] ^:= If[n <= 0, {Cons[], Cons[x, l]}, MapAt[Prepend[#, x] &, TakeDrop[l, n - 1], {1}]]
 
 
 Partition[Cons[], _] ^:= Cons[]
 Partition[l_Cons, n_] ^:= Cons[#1, Partition[#2, n]] & @@ TakeDrop[l, n]
 
 
-Join[Cons[], rest___] ^:= Join[rest]
-Join[Cons[x_, l_], rest___] ^:= Cons[x, Join[l, rest]]
+LazyJoin[Cons[]] ^:= Cons[]
+LazyJoin[Cons[], rest__] ^:= LazyJoin[rest]
+LazyJoin[Cons[x_, l_], rest___] ^:= Cons[x, LazyJoin[l, rest]]
 
 
-Catenate[Cons[Cons[x_, l_], r_]] ^:= Cons[x, Join[l, Catenate@r]]
+Clone[Cons[]] ^:= Cons[]
+Clone[l_Cons] ^:= LazyJoin[l, Clone[l]]
+
+
+Repeat[x_] := Cons[x, Repeat[x]]
+
+
+Catenate[Cons[Cons[x_, l_], r_]] ^:= Cons[x, LazyJoin[l, Catenate @ r]]
 Catenate[Cons[]] ^:= Cons[]
 
 
-ParallelMap[f_, l_Cons] ^:= Catenate @ With[{ids = Lazy @ ParallelEvaluate[$KernelID]},
-    Map[ZipWith[ParallelEvaluate[f[#1], #2] &][#, ids] &, Partition[l, $KernelCount]]
-]
+LazyParallelMap[f_, l_Cons] ^:= Catenate @ Map[Map[ParallelSubmit[f[#]] &, #] &, Partition[l, $KernelCount]]
 
 
 TakeWhile[Cons[], _] ^:= Cons[]
