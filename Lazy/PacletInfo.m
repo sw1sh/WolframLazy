@@ -1,11 +1,12 @@
 PacletObject[
   <|
     "Name" -> "Wolfram/Lazy",
-    "Description" -> "Lazy data structures",
+    "Description" -> "Lazy computation",
     "Creator" -> "Nikolay Murzin",
+    "License" -> "MIT",
     "PublisherID" -> "Wolfram",
-    "Version" -> "0.0.2",
-    "WolframVersion" -> "13.0+",
+    "Version" -> "1.0.3",
+    "WolframVersion" -> "13.1+",
     "Extensions" -> {
       {
         "Kernel",
@@ -14,11 +15,14 @@ PacletObject[
         "Symbols" -> {
           "Wolfram`Lazy`LazyValue",
           "Wolfram`Lazy`LazyList",
+          "Wolfram`Lazy`LazyTree",
           "Wolfram`Lazy`LazySplits",
           "Wolfram`Lazy`LazyNestList",
           "Wolfram`Lazy`MultiwayNest",
           "Wolfram`Lazy`LazyFindPath",
-          "Wolfram`Lazy`LazyEval"
+          "Wolfram`Lazy`LazyEval",
+          "Wolfram`Lazy`LazyLength",
+          "Wolfram`Lazy`LazyValueArray"
         }
       },
       {"Documentation", "Language" -> "English"}

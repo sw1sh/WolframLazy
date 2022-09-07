@@ -27,7 +27,7 @@ LazyComputation[data_Association]["Continue", opts : OptionsPattern[]] := Switch
     "FindPath",
     With[{newData = LazyFindPath[
             data["Lazy"],
-            data["Target"],
+            data["Pattern"],
             data["Position"],
             data["Visited"],
             FilterRules[{opts}, Options[LazyFindPath]],
@@ -47,7 +47,7 @@ LazyComputation[data_Association]["Continue", opts : OptionsPattern[]] := Switch
     $Failed
 ]
 
-MakeBoxes[LazyComputation[data_Association /; LazyComputationDataQ[Unevaluated[data]]], format_] ^:= With[{
+MakeBoxes[l : LazyComputation[data_Association /; LazyComputationDataQ[Unevaluated[data]]], format_] ^:= With[{
     icon = Framed["\[Ellipsis]"]
 },
     BoxForm`ArrangeSummaryBox[
@@ -58,7 +58,7 @@ MakeBoxes[LazyComputation[data_Association /; LazyComputationDataQ[Unevaluated[d
         {
             Switch[data[Method],
                 "FindPath", {
-                    BoxForm`SummaryItem[{"Target: ", data["Target"]}],
+                    BoxForm`SummaryItem[{"Pattern: ", data["Pattern"]}],
                     BoxForm`SummaryItem[{"Paths: ", data["Paths"]}]
                 },
                 _,
@@ -66,7 +66,8 @@ MakeBoxes[LazyComputation[data_Association /; LazyComputationDataQ[Unevaluated[d
             ],
             {BoxForm`SummaryItem[{"Options: ", Row[data["Options"], ","]}]}
         },
-        format
+        format,
+        "Interpretable" -> Automatic
     ]
 ]
 

@@ -5,11 +5,11 @@ PackageExport["MultiwayNest"]
 PackageExport["LazyFindPath"]
 
 
-
+LazyPart[LazyValue[x_], ps___] := LazyValue[LazyPart[x, ps]]
 LazyPart[t_LazyTree, _[]] := t
-LazyPart[LazyTree[_, l_] | l_, h_[p_, ps___]] /; FlatQ[h] := LazyValue @ LazyPart[LazyPart[l, p], ArgEval[h[ps]]]
-LazyPart[LazyTree[_, l_] | l_, h_[p_, ps_]] := LazyValue @ LazyPart[LazyPart[l, p], ps]
-LazyPart[t_LazyTree, h_[p_]] := LazyValue @ LazyPart[t, p]
+LazyPart[LazyTree[_, l_] | l_, h_[p_, ps___]] /; FlatHoldQ[h] := LazyValue @ LazyPart[LazyPart[l, p], ArgEval[h[ps]]]
+LazyPart[LazyTree[_, l_] | l_, h_[p_, ps_]] /; HoldQ[h] := LazyValue @ LazyPart[LazyPart[l, p], ps]
+LazyPart[t_LazyTree, h_[p_]] /; HoldFirstQ[h] := h @ LazyPart[t, p]
 LazyPart[LazyTree[_, l_] | l_, p_Integer ? Positive, ps___] := LazyPart[ReleaseLazyValue @ LazyFirst[LazyDrop[l, p - 1], Missing[p]], ps]
 LazyPart[x_] := x
 
@@ -72,7 +72,7 @@ ResourceFunction["AddCodeCompletion"][MultiwayNest, {None, None, "BreadthFirst",
 
 
 Options[LazyFindPath] = {TimeConstraint -> 5, "TraversalOrder" -> "Random"}
-LazyFindPath[initLazy_, target_, initPos_Association, initVisited_List, opts : OptionsPattern[]] := Block[{
+LazyFindPath[initLazy_, patt_, initPos_Association, initVisited_List, opts : OptionsPattern[]] := Block[{
     lazy = initLazy, pos = initPos, visited = initVisited, p, pp, found,
     timeConstraint = OptionValue[TimeConstraint],
 	traversalOrder = OptionValue["TraversalOrder"]
@@ -89,33 +89,37 @@ LazyFindPath[initLazy_, target_, initPos_Association, initVisited_List, opts : O
 		];
 		p = First[Keys[pos]];
 		pp = First[pos];
-		lazy[[Sequence @@ p]] = Replace[First[Extract[lazy, {p}]],
+		lazy[[Sequence @@ p]] = Replace[
+			First[Extract[lazy, {p}]],
 			{
-				LazyTree[LazyValue[x_] | x_, LazyValue[l_] | l_] :> RuleCondition[With[{z = x},
-					If[z === target, found = pp];
+				LazyTree[x_, l_] :> With[{z = ReleaseLazyValue[x]},
+					If[ MatchQ[z, patt], found = Most[pp]];
 					If[ !MemberQ[visited, z],
 						If[ Unevaluated[l] =!= LazyList[],
-							AppendTo[pos, Append[p, 2] -> Append[pp, 1]]
+							AppendTo[pos, Append[p, 2] -> pp]
 						];
 						AppendTo[visited, z]
 					];
 					pos = Rest[pos];
 					LazyTree[z, l]
-				]],
-				LazyList[LazyValue[x_] | x_, LazyValue[l_] | l_] :> RuleCondition[With[{z = x},
-					AppendTo[pos, Append[p, 1] -> pp];
+				],
+				LazyList[x_, l_] :> With[{z = x},
+					If[	MatchQ[z, patt],
+						found = pp,
+						AppendTo[pos, Append[p, 1] -> Append[pp, 1]]
+					];
 					If[ Unevaluated[l] =!= LazyList[],
 						AppendTo[pos, Append[p, 2] -> MapAt[# + 1 &, pp, -1]]
 					];
 					pos = Rest[pos];
 					LazyList[z, l]
-				]],
-				LazyValue[x_] | x_ :> RuleCondition[With[{z = x},
-					If[z === target, found = pp];
-                    AppendTo[visited, z];
-					pos = Rest[pos];
+				],
+				x : LazyList[] :> (pos = Rest[pos]; x),
+				LazyValue[x_] :> With[{z = x},
+					If[MatchQ[z, patt], found = Most[pp]];
+                    (* AppendTo[visited, z]; *)
 					z
-				]]
+				]
 			}
 		]
 		]
@@ -130,13 +134,13 @@ LazyFindPath[initLazy_, target_, initPos_Association, initVisited_List, opts : O
         "Position" -> pos,
         "Paths" -> If[ValueQ[found], {found}, {}],
         "Visited" -> visited,
-        "Target" -> target,
+        "Pattern" -> patt,
         Method -> "FindPath",
         "Options" -> {opts}
     |>]
 ]
-LazyFindPath[initLazy_, target_, opts : OptionsPattern[]] :=
-	LazyFindPath[initLazy, target, <|{} -> If[MatchQ[initLazy, _LazyTree], {}, {1}]|>, {}, opts]
+LazyFindPath[initLazy_, patt_, opts : OptionsPattern[]] :=
+	LazyFindPath[initLazy, patt, <|{} -> If[MatchQ[initLazy, _LazyTree], {}, {1}]|>, {}, opts]
 
 
 ConsToListPosition[{}, lazy_] := {}

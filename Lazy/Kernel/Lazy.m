@@ -3,6 +3,7 @@ Package["Wolfram`Lazy`"]
 PackageScope["FlatQ"]
 PackageScope["HoldQ"]
 PackageScope["HoldFirstQ"]
+PackageScope["FlatHoldQ"]
 PackageScope["EvalFirst"]
 
 PackageExport["LazyEval"]
@@ -12,20 +13,27 @@ PackageExport["NormalLazy"]
 PackageExport["ReleaseLazyValue"]
 
 PackageExport["LazyValue"]
+PackageExport["Thunk"]
 
 
 
-SetAttributes[LazyValue, {HoldFirst}]
+SetAttributes[LazyValue, {HoldFirst, Flat, OneIdentity}]
+SetAttributes[Thunk, {HoldFirst}]
+
+Scan[SetAttributes[#, Stub] &, {LazyValue,Thunk, LazyList, Cons, LazyTree}]
 
 
-HoldQ[h_Symbol] := ContainsAny[Attributes[Unevaluated[h]], {HoldAll}]
+HoldQ[h_Symbol] := ContainsAny[Attributes[h], {HoldAll, HoldAllComplete}]
 HoldQ[_] := False
 
-HoldFirstQ[h_Symbol] := ContainsAny[Attributes[Unevaluated[h]], {HoldAll, HoldFirst}]
+HoldFirstQ[h_Symbol] := ContainsAny[Attributes[h], {HoldAll, HoldAllComplete, HoldFirst}]
 HoldFirstQ[_] := False
 
-FlatQ[h_Symbol] := MemberQ[Attributes[Unevaluated[h]], Flat]
+FlatQ[h_Symbol] := MemberQ[Attributes[h], Flat]
 FlatQ[_] := False
+
+FlatHoldQ[h_Symbol] := With[{attrs = Attributes[h]}, MemberQ[attrs, Flat] && ContainsAny[attrs, {HoldAll, HoldAllComplete}]]
+FlatHoldQ[_] := False
 
 
 LazyEval[l_, _Integer ? NonPositive] := l
@@ -53,8 +61,10 @@ LazyListEval[l_] := LazyListEval[l, 1]
 LazyListEval[l_, n_] := Nest[Replace[expr : _LazyList | _Cons | _LazyValue :> LazyListEval[expr, 1]], Unevaluated[l], n]
 
 
-ArgEval[h_[LazyValue[x_] | x_, rest___], right___] := Sequence[With[{y = x}, If[Unevaluated[x] === y, h[y, rest], ArgEval[Unevaluated@h[y, rest]]]], right]
+ArgEval[h_[LazyValue[x_] | x_, rest___]] /; HoldQ[h] :=
+    With[{y = x}, If[Unevaluated[x] === y, h[y, rest], ArgEval[h[y, rest]]]]
 ArgEval[x___] := x
+SetAttributes[ArgEval, SequenceHold]
 
 
 EvalFirst[h_[LazyValue[x_] | x_, rest___]] := h[Evaluate[x], rest]
@@ -63,8 +73,10 @@ EvalFirst[h_[LazyValue[x_] | x_, rest___]] := h[Evaluate[x], rest]
 NormalLazy[l_] := Unevaluated[l] //. {LazyValue[x_] :> x, t : _LazyTree :> LazyTreeToTree[t], cons : _Cons | _LazyList :> LazyListToList[cons]}
 
 
-ReleaseLazyValue[LazyValue[x_]] := ReleaseLazyValue[x]
-ReleaseLazyValue[x_] := x
+releaseLazyValue[LazyValue[x_]] := releaseLazyValue[x]
+releaseLazyValue[x_] := x
+
+ReleaseLazyValue[x_] := Block[{$IterationLimit = Infinity}, releaseLazyValue[x]]
 
 
 Normal[l_Cons] ^:= LazyListToList[l]
@@ -72,14 +84,20 @@ Normal[l_LazyList] ^:= LazyListToList[l]
 Normal[t_LazyTree] ^:= LazyTreeToTree[t]
 Normal[LazyValue[x_]] ^:= Normal[x]
 
+Thunk[x_] := With[{z = ReleaseLazyValue[x]}, Thunk[x] = z; z]
 
-Format[lazy : LazyValue[x_]] ^:= DynamicModule[{form},
-  	form = Button[
-        Tooltip[Framed["\[Ellipsis]"], InputForm[lazy]], form = x,
-        Appearance -> None
-    ];
-  	Dynamic[form],
-    UndoTrackedVariables :> {form}
+
+Format[lazy : LazyValue[x_]] ^:= Interpretation[
+    DynamicModule[{form},
+        form = Button[
+            Tooltip[Framed["\[Ellipsis]"], InputForm[lazy]], form = If[TrueQ[CurrentValue["OptionKey"]], ReleaseLazyValue[x], x],
+            Appearance -> None
+        ];
+        Dynamic[form],
+        UndoTrackedVariables :> {form}
+    ],
+    lazy
 ]
+
 
 (* f_[left___, LazyValue[mid_], right___] := LazyValue[f[left, mid, right]] *)

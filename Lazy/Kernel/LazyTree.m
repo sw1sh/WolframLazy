@@ -1,6 +1,8 @@
 Package["Wolfram`Lazy`"]
 
 PackageExport["LazyTree"]
+PackageExport["LazyTreeData"]
+PackageExport["LazyTreeChildren"]
 PackageExport["LazyTreeRuleForm"]
 PackageExport["LazyTreeForm"]
 PackageExport["ConsTree"]
@@ -13,23 +15,50 @@ SetAttributes[LazyTree, HoldAll]
 LazyTree[x_] := LazyTree[x, LazyList[]]
 
 
-LazyTreeToTree[LazyTree[data_, children_]] ^:= CheckAbort[
-    If[ Length[Stack[]] >= $RecursionLimit - 2,
-        Tree[data, None],
-        Tree[data, LazyTreeToTree /@ LazyListToList[children]]
-    ],
-    Tree[data, None]
+LazyTreeToTree[LazyTree[data_, children_], opts___] ^:= Block[{tree = Tree[data, {}], cs = {children}, pos = {{ {1} }}, i},
+    CheckAbort[
+        While[cs =!= {},
+            i = 1;
+            Scan[AbortProtect[
+                LazyScan[
+                    (
+                        tree = TreeInsert[tree, Tree[TreeData[#], {}], Last[pos[[i]]]];
+                        AppendTo[pos[[i]], MapAt[# + 1 &, Last[pos[[i]]], -1]];
+                        AppendTo[cs, TreeChildren[#]]
+                    ) &,
+                    #
+                ];
+                pos[[i]] = Most[pos[[i]]];
+                cs = Rest[cs];
+                i++
+                ] &,
+                cs
+            ];
+            pos = Catenate @ Map[List @* Append[1], pos, {2}];
+        ],
+        Null
+    ];
+    Tree[tree, opts, AspectRatio -> 1 / 3]
 ]
 LazyTreeToTree[x_] := x
 
 
-TreeData[LazyTree[data_, _]] ^:= data
-TreeChildren[LazyTree[_, children_]] ^:= children
+LazyTreeData[LazyTree[data_, _]] ^:= data
+LazyTreeData[v_LazyValue] := LazyTreeData[ReleaseLazyValue[v]]
+LazyTreeChildren[LazyTree[_, children_]] ^:= children
+LazyTreeChildren[v_LazyValue] := LazyTreeChildren[ReleaseLazyValue[v]]
 
+TreeData[t_LazyTree] ^:= LazyTreeData[t]
+TreeData[t_LazyValue] ^:= LazyTreeData[t]
+TreeChildren[t_LazyTree] ^:= LazyTreeChildren[t]
+TreeChildren[t_LazyValue] ^:= LazyTreeChildren[t]
+
+
+LazyTree /: TreeExtract[t_LazyTree, p_List] := TreeExtract[t, LazyList[p]]
 TreeExtract[t_LazyTree, h_[]] ^:= t
-TreeExtract[t_LazyTree, h_[p_, s___]] /; FlatQ[h] ^:= Lazy @ TreeExtract[LazyPart[TreeChildren[t], p], s]
-TreeExtract[t_LazyTree, h_[p_, s_]] ^:= Lazy @ TreeExtract[LazyPart[TreeChildren[t], p], s]
-TreeExtract[t_LazyTree, h_[l_]] ^:= Lazy @ TreeExtract[t, l]
+TreeExtract[t_LazyTree, h_[p_, s___]] /; FlatQ[h] ^:= LazyValue @ TreeExtract[LazyPart[TreeChildren[t], p], s]
+TreeExtract[t_LazyTree, h_[p_, s_]] ^:= LazyValue @ TreeExtract[LazyPart[TreeChildren[t], p], s]
+TreeExtract[t_LazyTree, h_[l_]] ^:= LazyValue @ TreeExtract[t, l]
 
 
 LazyTreeRuleForm[LazyTree[data_, l : _Cons | _LazyList]] := data -> l
