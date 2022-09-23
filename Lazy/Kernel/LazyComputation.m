@@ -24,13 +24,14 @@ LazyComputation[data_Association]["Association"] := data
 LazyComputation[data_Association]["Dataset"] := Dataset[data]
 
 LazyComputation[data_Association]["Continue", opts : OptionsPattern[]] := Switch[data[Method],
-    "FindPath",
-    With[{newData = LazyFindPath[
+    "LazyTraverse",
+    With[{newData = LazyTraverse[
             data["Lazy"],
             data["Pattern"],
             data["Position"],
             data["Visited"],
-            FilterRules[{opts}, Options[LazyFindPath]],
+            "Computation",
+            FilterRules[{opts}, Options[LazyTraverse]],
             data["Options"]
         ]["Association"]
     },
@@ -57,7 +58,7 @@ MakeBoxes[l : LazyComputation[data_Association /; LazyComputationDataQ[Unevaluat
         {{BoxForm`SummaryItem[{"Method: ", data[Method]}]}},
         {
             Switch[data[Method],
-                "FindPath", {
+                "LazyTraverse", {
                     BoxForm`SummaryItem[{"Pattern: ", data["Pattern"]}],
                     BoxForm`SummaryItem[{"Paths: ", data["Paths"]}]
                 },

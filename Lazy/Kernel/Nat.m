@@ -19,7 +19,6 @@ Nat[LazyValue[x_], m_ : 1] := Nat[x, m]
 FromNat[Nat[x_Integer, n_]] := n + x
 FromNat[Nat[x_, n_]] := n + LazyValue[FromNat[x]]
 FromNat[n_Integer] := n
-FromNat[LazyValue[x_]] := FromNat[x]
 FromNat[___] := $Failed
 
 x_ < n : Nat[_, z_] ^:= x < z || x < FromNat[n]
@@ -36,5 +35,5 @@ Nat /: Infinity >= n : Nat[_, x_] := True
 
 Normal[n_Nat] ^:= FromNat[n]
 
-Format[nat_Nat] ^:= Interpretation[Tooltip["Nat"[FromNat[nat]], InputForm[nat]], nat]
+Format[nat_Nat] ^:= Interpretation[Tooltip["Nat"[FromNat[nat]], HoldForm[DisableFormatting[nat]]], nat]
 

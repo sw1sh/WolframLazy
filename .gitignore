@@ -2,3 +2,5 @@
 *.paclet
 
 Lazy/build/
+
+.DS_Store

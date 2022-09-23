@@ -5,7 +5,7 @@ PacletObject[
     "Creator" -> "Nikolay Murzin",
     "License" -> "MIT",
     "PublisherID" -> "Wolfram",
-    "Version" -> "1.0.3",
+    "Version" -> "1.0.4",
     "WolframVersion" -> "13.1+",
     "Extensions" -> {
       {
@@ -13,16 +13,20 @@ PacletObject[
         "Root" -> "Kernel",
         "Context" -> "Wolfram`Lazy`",
         "Symbols" -> {
+          "Wolfram`Lazy`Lazy",
           "Wolfram`Lazy`LazyValue",
           "Wolfram`Lazy`LazyList",
           "Wolfram`Lazy`LazyTree",
-          "Wolfram`Lazy`LazySplits",
-          "Wolfram`Lazy`LazyNestList",
-          "Wolfram`Lazy`MultiwayNest",
-          "Wolfram`Lazy`LazyFindPath",
+          "Wolfram`Lazy`LazyExpression",
           "Wolfram`Lazy`LazyEval",
           "Wolfram`Lazy`LazyLength",
-          "Wolfram`Lazy`LazyValueArray"
+          "Wolfram`Lazy`LazyNestList",
+          "Wolfram`Lazy`LazySplits",
+          "Wolfram`Lazy`LazyTreeEdges",
+          "Wolfram`Lazy`LazyTraverse",
+          "Wolfram`Lazy`LazyValueArray",
+          "Wolfram`Lazy`MultiwayNest",
+          "Wolfram`Lazy`LazyDirectoryTree"
         }
       },
       {"Documentation", "Language" -> "English"}

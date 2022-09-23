@@ -5,7 +5,7 @@ PackageExport["LazyList"]
 
 PackageScope["LazyListQ"]
 
-PackageExport["ConsForm"]
+PackageExport["LazyListSublist"]
 PackageScope["ConsLast"]
 PackageExport["LazyListForm"]
 PackageExport["LazyListToList"]
@@ -39,6 +39,7 @@ PackageExport["LazyRotateRight"]
 PackageExport["LazyDeleteDuplicates"]
 PackageExport["LazyDeleteDuplicatesBy"]
 
+PackageExport["LazyFoldLeft"]
 PackageExport["LazyFold"]
 PackageExport["LazyFoldList"]
 PackageExport["LazyFoldRight"]
@@ -74,13 +75,14 @@ Lazy::undef = "function `1` is undefined for the argument `2`."
 SetAttributes[Cons, {HoldAll, Flat}]
 SetAttributes[LazyList, {HoldAll}]
 
+l_LazyList /; $LazyNoEntry && System`Private`EntryQ[Unevaluated[l]] := System`Private`SetNoEntry[Unevaluated[l]]
+l_Cons /; $LazyNoEntry && System`Private`EntryQ[Unevaluated[l]] := System`Private`SetNoEntry[Unevaluated[l]]
+
 
 LazyListQ[l_] := MatchQ[Unevaluated[l], _Cons | _LazyList]
 
-LazyList[x_] := ToLazyList[Unevaluated[x]]
+LazyList[x_] := ToLazyList[x]
 LazyList[Nothing, l_] := l
-
-(* l_LazyList /; System`Private`EntryQ[Unevaluated[l]] := System`Private`SetNoEntry[Unevaluated[l]] *)
 
 
 (* Functions *)
@@ -91,10 +93,11 @@ LazyListEmptyQ[LazyValue[x_]] := LazyListEmptyQ[x]
 LazyListEmptyQ[_] := False
 
 
-LazyMap[f_, h_[]] := h[]
-LazyMap[f_, h_[LazyValue[x_] | x_, l___]] /; FlatHoldQ[h] := h[f[x], LazyMap[f, ArgEval[h[l]]]]
-LazyMap[f_, h_[LazyValue[x_] | x_, l_]] /; HoldQ[h] := h[f[x], LazyMap[f, l]]
-LazyMap[f_, h_[l_]] /; HoldFirstQ[h] := LazyValue[LazyMap[f, l]]
+LazyMap[f_, h_[]] /; HoldQ[h] := h[]
+LazyMap[f_, h_[x_, l___]] /; FlatHoldQ[h] := h[f[x], LazyMap[f, ArgEval[h[l]]]]
+LazyMap[f_, h_[x_, l_]] /; HoldQ[h] := h[f[x], LazyMap[f, l]]
+LazyMap[f_, h_[l_]] /; HoldFirstQ[h] := h[LazyMap[f, l]]
+LazyMap[f_, l_] := With[{r = l}, LazyValue[LazyMap[f, r]] /; LazyValueQ[r] || r =!= Unevaluated[l] || Message[Lazy::undef, LazyMap, r]]
 LazyMap[f_][l_] := LazyMap[f, l]
 
 
@@ -102,40 +105,49 @@ LazyMapIndexed[f_, l_] := LazyMapThread[f, LazyList[l, LazyList[LazyMap[List, La
 
 
 LazyScan[f_, h_[]] := Null
-LazyScan[f_, h_[LazyValue[x_] | x_, l___]] /; FlatHoldQ[h] := (f[x]; LazyScan[f, ArgEval[h[l]]])
-LazyScan[f_, h_[LazyValue[x_] | x_, l_]] /; HoldQ[h] := (f[x]; LazyScan[f, l])
+LazyScan[f_, h_[x_, l___]] /; FlatHoldQ[h] := (f[x]; LazyScan[f, ArgEval[h[l]]])
+LazyScan[f_, h_[x_, l_]] /; HoldQ[h] := (f[x]; LazyScan[f, l])
 LazyScan[f_, h_[l_]] /; HoldFirstQ[h] := LazyScan[f, l]
 LazyScan[f_][l_] := LazyScan[f, l]
 
 
 LazySelect[h_[], _] /; HoldQ[h] := h[]
-LazySelect[h_[LazyValue[x_] | x_, l___], crit_] /; FlatHoldQ[h] :=
+LazySelect[h_[x_, l___], crit_] /; FlatHoldQ[h] :=
     With[{z = x}, If[TrueQ[crit[ReleaseLazyValue[z]]], h[z, LazySelect[ArgEval[h[l]], crit]], LazyValue @ LazySelect[ArgEval[h[l]], crit]]]
-LazySelect[h_[LazyValue[x_] | x_, l_], crit_] /; HoldQ[h] := With[{z = x}, If[TrueQ[crit[ReleaseLazyValue[z]]], h[z, LazySelect[l, crit]], LazyValue @ LazySelect[l, crit]]]
+LazySelect[h_[x_, l_], crit_] /; HoldQ[h] := With[{z = x}, If[TrueQ[crit[ReleaseLazyValue[z]]], h[z, LazySelect[l, crit]], LazyValue @ LazySelect[l, crit]]]
 LazySelect[h_[l_], crit_] /; HoldFirstQ[h] := h @ LazySelect[l, crit]
 LazySelect[crit_][l_] := LazySelect[l, crit]
 
 
-LazyFirst[h_[x_, ___], ___] /; FlatHoldQ[h] := x
+LazyFirst[h_[x_, l___], def___] /; FlatHoldQ[h] := With[{y = x}, If[LazyValueQ[y] || y === Unevaluated[x], y, LazyValue[LazyFirst[h[y, l]]]]]
 LazyFirst[h_[x_, _], ___] /; HoldQ[h] := x
 LazyFirst[h_[l_], def___] /; HoldFirstQ[h] := h[LazyFirst[l, def]]
 LazyFirst[h_[], def_] /; HoldQ[h] := def
 LazyFirst[h_[]] /; HoldQ[h] && Message[Lazy::undef, LazyFirst, h[]] := Null
-LazyFirst[l : Except[h_[] /; HoldQ[h]], def___] := With[{r = l}, LazyValue[LazyFirst[r, def]] /; r =!= Unevaluated[l] || Message[Lazy::undef, LazyFirst, r]]
+LazyFirst[l : Except[h_[] /; HoldQ[h]], def___] := With[{r = l},
+    LazyValue[LazyFirst[r, def]] /; LazyValueQ[r] || r =!= Unevaluated[l] || Message[Lazy::undef, LazyFirst, r]
+]
 
 
-LazyRest[h_[_, l___], ___] /; FlatHoldQ[h] := h[Evaluate[ArgEval[l]]]
+LazyRest[h_[l___], ___] /; FlatHoldQ[h] := LazyValue @ Replace[ArgEval[h[l]], _[_, r___] :> h[r]]
 LazyRest[h_[_, l_], ___] /; HoldQ[h] := l
-LazyRest[h_[l_], def___] /; HoldFirstQ[h] := LazyValue[LazyRest[l, def]]
+LazyRest[h_[l_], def___] /; HoldFirstQ[h] := h[LazyRest[l, def]]
 LazyRest[h_[], def_] /; HoldQ[h] := def
-LazyRest[_[]] /; Message[Lazy::undef, LazyRest, l] := Null
+LazyRest[h_[]] /; HoldQ[h] && Message[Lazy::undef, LazyRest, l] := Null
+LazyRest[l : Except[h_[] /; HoldQ[h]], def___] := With[{r = l},
+    LazyValue[LazyRest[r, def]] /; LazyValueQ[r] || r =!= Unevaluated[l] || Message[Lazy::undef, LazyRest, r]
+]
 
 
-LazyLast[h_[_, l___], def___] /; FlatHoldQ[h] := LazyValue[LazyLast[ArgEval[h[l]], def]]
-LazyLast[h_[_, l_], def___] := LazyValue[LazyLast[l, def]]
-LazyLast[_[l_], def___] := LazyValue[LazyLast[l, def]]
-LazyLast[_[], def_] := def
-LazyLast[l : _[]] /; Message[Last::nolast, l] := Null
+LazyLast[h_[x_], ___] /; FlatHoldQ[h] := x
+LazyLast[h_[_, l__], def___] /; FlatHoldQ[h] := LazyValue[LazyLast[ArgEval[h[l]], def]]
+LazyLast[h_[x_, l_], def___] /; HoldQ[h] := With[{r = l}, If[! LazyValueQ[r] && r === LazyList[], x, LazyValue[LazyLast[r, def]]]]
+LazyLast[h_[l_], def___] /; HoldQ[h] := h[LazyLast[l, def]]
+LazyLast[h_[]] /; HoldQ[h] && Message[Lazy::undef, LazyLast, h[]] := Null
+LazyLast[h_[], def_] /; HoldQ[h] := def
+LazyLast[l : Except[h_[] /; HoldQ[h]], def___] := With[{r = l},
+    LazyValue[LazyLast[r, def]] /; LazyValueQ[r] || r =!= Unevaluated[l] || Message[Lazy::undef, LazyLast, r]
+]
 
 
 LazyMost[l : _[]] /; Message[Most::nomost, l] := Null
@@ -161,8 +173,8 @@ LazyTake[h_[x_, ___], 1] /; FlatHoldQ[h] := h[x, h[]]
 LazyTake[h_[x_, l___], n_] /; FlatHoldQ[h] := h[x, LazyTake[ArgEval[h[l]], n - 1]]
 LazyTake[h_[__], n_] /; HoldQ[h] && n <= 0 := h[]
 LazyTake[h_[x_, _], 1] /; HoldQ[h] := h[x, h[]]
-LazyTake[h_[x_, l_], n_] /; HoldQ[h] := h[x, LazyTake[Unevaluated[l], n - 1]]
-LazyTake[h_[l_], n_] /; HoldFirstQ[h] := h[LazyTake[Unevaluated[l], n]]
+LazyTake[h_[x_, l_], n_] /; HoldQ[h] := h[x, LazyTake[l, n - 1]]
+LazyTake[h_[l_], n_] /; HoldFirstQ[h] := h[LazyTake[l, n]]
 LazyTake[l_, n_] := With[{r = l}, LazyValue[LazyTake[r, n]] /; r =!= Unevaluated[l] || Message[Lazy::undef, LazyTake, r]]
 LazyTake[n_][l_] := LazyTake[Unevaluated[l], n]
 
@@ -182,8 +194,8 @@ LazyDropWhile[crit_][l_] := LazyDropWhile[l, crit]
 
 
 LazyTakeWhile[h_[], _] := h[]
-LazyTakeWhile[h_[LazyValue[x_] | x_, l___], crit_] /; FlatHoldQ[h] := If[TrueQ[crit[x]], h[x, LazyTakeWhile[ArgEval[h[l]], crit]], h[]]
-LazyTakeWhile[h_[LazyValue[x_] | x_, l_], crit_] := If[TrueQ[crit[x]], h[x, LazyTakeWhile[l, crit]], h[]]
+LazyTakeWhile[h_[LazyValue[x_] | x_, l___], crit_] /; FlatHoldQ[h] := If[TrueQ[crit[ReleaseLazyValue[x]]], h[x, LazyTakeWhile[ArgEval[h[l]], crit]], h[]]
+LazyTakeWhile[h_[LazyValue[x_] | x_, l_], crit_] := If[TrueQ[crit[ReleaseLazyValue[x]]], h[x, LazyTakeWhile[l, crit]], h[]]
 LazyTakeWhile[h_[l_], crit_] := LazyValue[LazyTakeWhile[l, crit]]
 LazyTakeWhile[crit_][l_] := LazyTakeWhile[l, crit]
 
@@ -213,33 +225,39 @@ LazyJoin[h_[]] /; HoldQ[h] := h[]
 LazyJoin[h_[], rest__] /; HoldQ[h] := LazyValue @ LazyJoin[rest]
 LazyJoin[h_[l_], rest___] /; FlatHoldQ[h] := h[l, rest]
 LazyJoin[h_[x__, l_], rest___] /; FlatHoldQ[h] := h[x, LazyJoin[h[l], rest]]
-LazyJoin[h_[LazyValue[x_] | x_, l_], rest___] /; HoldQ[h] := h[x, LazyJoin[l, rest]]
+LazyJoin[h_[x_, l_], rest___] /; HoldQ[h] := h[x, LazyJoin[l, rest]]
 LazyJoin[h_[l_], rest___] /; HoldFirstQ[h] := h[LazyJoin[l, rest]]
-LazyJoin[l_, rest___] := With[{r = l}, LazyJoin[r, rest] /; r =!= Unevaluated[l] || Message[Lazy::undef, LazyJoin, r]]
+LazyJoin[l_, rest___] := With[{r = l}, LazyJoin[r, rest] /; LazyValueQ[r] || r =!= Unevaluated[l] || Message[Lazy::undef, LazyJoin, r]]
+SetAttributes[LazyJoin, HoldRest]
 
-
-LazyCatenate[h_[]] := h[]
-LazyCatenate[h_[g_[], rest___]] /; HoldQ[h] && HoldQ[g] := h[]
-LazyCatenate[h_[g_[LazyValue[x_] | x_, l_], rest___]] /; FlatHoldQ[h] && HoldQ[g] := h[x, LazyJoin[LazyCatenate[h[l]], LazyCatenate[ArgEval[h[ArgEval[rest]]]]]]
-LazyCatenate[h_[x_, rest___]] /; FlatHoldQ[h] := With[{y = x}, LazyValue @ LazyCatenate[h[y, rest]] /; y =!= Unevaluated[x] || Message[Lazy::undef, LazyCatenate, h[y, rest]]]
+LazyCatenate[h_[]] /; HoldQ[h] := h[]
+LazyCatenate[h_[g_[]]] /; HoldQ[h] && HoldQ[g] := h[]
+LazyCatenate[h_[g_[], l_]] /; HoldQ[h] && HoldQ[g] := LazyValue @ LazyCatenate[l]
+LazyCatenate[h_[g_[x_, l_], rest___]] /; FlatHoldQ[h] && HoldQ[g] := h[x, LazyJoin[LazyCatenate[h[l]], LazyCatenate[ArgEval[h[ArgEval[rest]]]]]]
+LazyCatenate[h_[x_, rest___]] /; FlatHoldQ[h] := With[{y = x}, LazyValue @ LazyCatenate[h[y, rest]] /; LazyValueQ[y] || y =!= Unevaluated[x] || Message[Lazy::undef, LazyCatenate, h[y, rest]]]
 LazyCatenate[h_[l___], rest___] /; FlatHoldQ[h] := h[l, rest]
-(* LazyCatenate[h_[h_[LazyValue[x_] | x_, l___], rest___]] /; FlatHoldQ[h] := h[x, LazyJoin[h[l], LazyCatenate[h[rest]]]]
-LazyCatenate[h_[LazyList[LazyValue[x_] | x_, l_], rest___]] /; FlatHoldQ[h] := h[x, LazyJoin[LazyCatenate[h[l]], LazyCatenate[h[rest]]]] *)
-(* LazyCatenate[h_[h_[LazyValue[x_] | x_, l_], rest_]] := h[x, LazyJoin[l, LazyCatenate[rest]]]
-LazyCatenate[h_[h_[], rest_]] :=  LazyCatenate[rest]
-LazyCatenate[h_[h_[l_], rest__]] := LazyValue[LazyCatenate[h[l, rest]]] *)
 LazyCatenate[h_[x_, l_]] /; HoldQ[h] := LazyValue @ LazyJoin[x, LazyCatenate[l]]
-LazyCatenate[h_[l_]] /; HoldFirstQ[h] := LazyValue @ LazyCatenate[l]
-LazyCatenate[l_] := With[{r = ArgEval[l]}, LazyCatenate[r] /; r =!= Unevaluated[l] || Message[Lazy::undef, LazyCatenate, r]]
+LazyCatenate[h_[l_]] /; HoldFirstQ[h] := h @ LazyCatenate[l]
+LazyCatenate[l_] := With[{r = ArgEval[l]}, LazyCatenate[r] /; LazyValueQ[r] || r =!= Unevaluated[l] || Message[Lazy::undef, LazyCatenate, r]]
 
 
-LazyFold[f_, x_, h_[]] := x
+LazyFoldLeft[_, x_, h_[]] /; HoldQ[h] := x
+LazyFoldLeft[f_, h_[x_, l___]] /; FlatHoldQ[h] := LazyFoldLeft[f, x, ArgEval[h[l]]]
+LazyFoldLeft[f_, x_, h_[y_, l___]] /; FlatHoldQ[h] := LazyValue @ LazyFoldLeft[f, Unevaluated[f[x, y]], ArgEval[h[l]]]
+LazyFoldLeft[f_, h_[x_, l_]] /; HoldQ[h] := LazyFoldLeft[f, x, l]
+LazyFoldLeft[f_, x_, h_[y_, l_]] /; HoldQ[h] := LazyValue @ LazyFoldLeft[f, Unevaluated[f[x, y]], l]
+LazyFoldLeft[f_, h_[l_]] /; HoldFirstQ[h] := h[LazyFoldLeft[f, l]]
+LazyFoldLeft[f_, x_, h_[l_]] /; HoldFirstQ[h] := h[LazyFoldLeft[f, x, l]]
+LazyFoldLeft[f_][l_] := LazyFoldLeft[f, l]
+
+
+LazyFold[_, x_, h_[]] /; HoldQ[h] := x
 LazyFold[f_, h_[x_, l___]] /; FlatHoldQ[h] := LazyFold[f, x, ArgEval[h[l]]]
 LazyFold[f_, x_, h_[y_, l___]] /; FlatHoldQ[h] := LazyValue @ LazyFold[f, f[x, y], ArgEval[h[l]]]
 LazyFold[f_, h_[x_, l_]] := LazyFold[f, x, l]
 LazyFold[f_, x_, h_[y_, l_]] := LazyValue @ LazyFold[f, f[x, y], l]
-LazyFold[f_, h_[l_]] := LazyValue[LazyFold[f, l]]
-LazyFold[f_, x_, h_[l_]] := LazyValue[LazyFold[f, x, l]]
+LazyFold[f_, h_[l_]] /; HoldFirstQ[h] := h[LazyFold[f, l]]
+LazyFold[f_, x_, h_[l_]] /; HoldFirstQ[h] := h[LazyFold[f, x, l]]
 LazyFold[f_][l_] := LazyFold[f, l]
 
 
@@ -298,11 +316,12 @@ LazyMapThread[f_, l : _[__], head_Symbol] := With[{r = LazyTakeWhile[l, MatchQ[_
 ]
 
 
-LazyTranspose[l_] := LazyList[
-    LazySelect[LazyMap[LazyFirst[#, Nothing] &, l], # =!= Nothing &],
-    LazyTranspose[LazySelect[LazyMap[LazyRest[#, Nothing] &, l], # =!= Nothing &]]
+LazyTranspose[l_] := With[{r = ArgEval @ LazyMap[ReleaseLazyValue, l]},
+    LazyTakeWhile[# =!= LazyList[] &] @ LazyList[
+        LazySelect[LazyMap[LazyFirst[#, Nothing] &, r], # =!= Nothing &],
+        LazyTranspose[LazySelect[LazyMap[LazyRest[#, Nothing] &, r], # =!= Nothing &]]
+    ]
 ]
-
 
 LazyRotateLeft[h_[]] := h[]
 LazyRotateLeft[h_[LazyValue[x_] | x_, l___]] /; FlatHoldQ[h] := LazyAppend[ArgEval[h[l]], x]
@@ -517,32 +536,37 @@ LazyRandomInteger[range_, ns_ : {Infinity}] := LazyArray[RandomInteger[range] &,
 
 (* Listable *)
 
-Cons /: f_Symbol[left___, cons__Cons, right___] /; MemberQ[Attributes[f], Listable] := LazyMap[f[left, #, right] &, cons]
-LazyList /: f_Symbol[left___, cons__LazyList, right___] /; MemberQ[Attributes[f], Listable] := LazyMap[f[left, #, right] &, cons]
+Cons /: f_Symbol[cons___Cons] /; MemberQ[Attributes[f], Listable] := LazyMapThread[f, {cons}]
+LazyList /: f_Symbol[cons___LazyList] /; MemberQ[Attributes[f], Listable] := LazyMapThread[f, {cons}]
+
+Cons /: f_Symbol[left___, cons_Cons, right___] /; MemberQ[Attributes[f], Listable] := LazyMap[f[left, #, right] &, cons]
+LazyList /: f_Symbol[left___, cons_LazyList, right___] /; MemberQ[Attributes[f], Listable] := LazyMap[f[left, #, right] &, cons]
 
 
 (* Formatting *)
 
-LazyListToList[LazyValue[x_]] := LazyListToList[x]
-LazyListToList[cons : _LazyList | _Cons | ((head : Except[LazyTree | Hold | HoldComplete, _Symbol])[___] /; HoldQ[head])] := Block[{
-    x = cons, l = {}, hh = Head[cons]
+(* LazyListToList[LazyValue[x_]] := LazyListToList[x] *)
+LazyListToList[cons : _LazyList | _Cons | ((head : Except[LazyTree | Hold | HoldComplete, _Symbol])[___] /; HoldQ[head])] := With[{
+    hh = Head[cons]
 },
+Block[{x = Hold[cons], l = {}},
     CheckAbort[
         While[
-            MatchQ[x, _hh | _LazyValue],
+            MatchQ[x, Hold[_hh | _LazyValue | _LazyExpression]],
             Replace[x, {
-                _[] :> Break[],
-                h_[y__, z_] /; FlatHoldQ[h] :> (
+                Hold[hh[]] :> Break[],
+                Hold[hh[y__, z_]] /; FlatHoldQ[hh] :> (
                     l = Join[l, {y}];
-                    x = h[Evaluate[z]]
+                    x = Hold[Evaluate[hh[Evaluate[z]]]]
                 ),
-                h_[LazyValue[y_] | y_] /; FlatHoldQ[h] :> (
-                    With[{v = y}, If[MatchQ[Unevaluated[v], _Sequence], l = Join[l, {v}], AppendTo[l, v]]];
+                Hold[hh[y_]] /; FlatHoldQ[hh] :> (
+                    With[{v = ReleaseLazyValue[Evaluate[y]]}, If[MatchQ[Unevaluated[v], _Sequence], l = Join[l, {v}], AppendTo[l, v]]];
                     Break[]
                 ),
-                _[LazyValue[y_] | y_, z_] :> With[{v = y}, If[MatchQ[Unevaluated[v], _Sequence], l = Join[l, {v}], AppendTo[l, v]]; x = z],
-                _[z_] :> (x = z)
-             }];
+                Hold[hh[y_, z_]] :> With[{v = ReleaseLazyValue[Evaluate[y]]}, If[MatchQ[Unevaluated[v], _Sequence], l = Join[l, {v}], AppendTo[l, v]]; x = Hold[Evaluate[z]]],
+                Hold[l_LazyExpression] :> (x = Hold[Evaluate[l["Eval"]]]),
+                Hold[z_] :> (x = Hold[Evaluate[ReleaseLazyValue[z]]])
+             }]
         ],
         Null
     ];
@@ -551,16 +575,18 @@ LazyListToList[cons : _LazyList | _Cons | ((head : Except[LazyTree | Hold | Hold
     ];
     l
 ]
+]
 LazyListToList[x_] := x
 
 
-(* ConsForm[h_[x___, l : h_[___]]] /; FlatHoldQ[h] := {x, Splice[ConsForm[Unevaluated[l]]]} *)
-ConsForm[Cons[x_]] := {x}
-ConsForm[Cons[x___, l_]] := {x}
-ConsForm[LazyList[x_, l : h_[___]]] := {x, Splice[ConsForm[Unevaluated[l]]]}
-ConsForm[LazyList[x_, l_]] := {x}
-ConsForm[(Cons | LazyList)[]] := {}
-ConsForm[_] := {}
+(* LazyListSublist[h_[x___, l : h_[___]]] /; FlatHoldQ[h] := {x, Splice[LazyListSublist[Unevaluated[l]]]} *)
+LazyListSublist[Cons[x_]] := {x}
+LazyListSublist[Cons[x___, l_]] := {x}
+LazyListSublist[LazyList[x_, l : LazyList[___]]] := {x, Splice[LazyListSublist[Unevaluated[l]]]}
+LazyListSublist[LazyList[x_, l_]] := {x}
+LazyListSublist[(Cons | LazyList)[]] := {}
+LazyListSublist[_] := {}
+
 
 ConsLast[Cons[___, l_]] := h[l]
 ConsLast[LazyList[___, l_]] := ConsLast[Unevaluated[l]]
@@ -571,16 +597,18 @@ ConsLast[x_] := x
 LazyListForm[cons : _Symbol[LazyValue[x_] | x_, _[]]] := Tooltip[{x}, InputForm[cons]]
 
 LazyListForm[cons : _Symbol[]] := Tooltip[{}, InputForm[cons]]
-LazyListForm[cons : head_Symbol[Longest[x__], LazyValue[l_] | l_]] := DynamicModule[{values = {x}, placeholder = Null, new, rest = LazyValue[l]},
-    rest = FixedPoint[Replace[{
-            LazyValue[LazyList[y_, next_]] :> (
+LazyListForm[cons : head_Symbol[Longest[x__], l_]] := DynamicModule[{values = {x}, placeholder = Null, new, rest},
+    rest = If[FlatHoldQ[head],
+        Hold[Evaluate[ArgEval[head[l]]]],
+        Hold @ Evaluate @ ReleaseHold @ FixedPoint[Replace[{
+            Hold[LazyList[y_, next_]] :> (
                 If[MatchQ[Unevaluated[y], _Sequence], values = Join[values, {y}], AppendTo[values, y]];
-                LazyValue[next]
+                Hold[next]
             )
-        }],
-        rest
+            }],
+            Hold[l]
+        ]
     ];
-    If[FlatHoldQ[head], rest = ArgEval[head[l]]];
     new = Hold[placeholder];
     Tooltip[
         Row[{"{", Row[{
@@ -589,21 +617,49 @@ LazyListForm[cons : head_Symbol[Longest[x__], LazyValue[l_] | l_]] := DynamicMod
             Dynamic @ If[ValueQ[rest], Row[{", ", Tooltip[
                 Button[
                     Framed["\[Ellipsis]"],
-                    DynamicModule[{newElement, newPlaceholder = Null},
-                        Replace[rest, {
-                            h_[ y_, next___] /; HoldQ[h] && FlatHoldQ[h] :> (
-                                newElement = If[TrueQ[CurrentValue["OptionKey"]], ReleaseLazyValue[y], y];
-                                rest = ArgEval[h[next]];
+                    DynamicModule[{newElement, newPlaceholder = Null, release},
+                        release = Replace[{
+                            Hold[h_[y_, next___]] /; FlatHoldQ[h] :> (
+                                If[ TrueQ[CurrentValue["OptionKey"]],
+                                    With[{z = ReleaseLazyValue[y]},
+                                        newElement = z;
+                                        If[ LazyValueQ[y] || z =!= Unevaluated[y],
+                                            rest = Hold[h[z, next]];
+                                            release[rest],
+                                            rest = Hold[Evaluate[ArgEval[h[next]]]]
+                                        ]
+                                    ],
+
+                                    With[{z = y},
+                                        newElement = z;
+                                        If[ LazyValueQ[y] || z =!= Unevaluated[y],
+                                            rest = Hold[h[z, next]],
+                                            rest = Hold[Evaluate[ArgEval[h[next]]]]
+                                        ]
+                                    ]
+                                ];
                             ),
-                            h_[y_, next_] /; HoldQ[h] :> (
-                                newElement = If[TrueQ[CurrentValue["OptionKey"]], ReleaseLazyValue[y], y];
-                                rest = next;
+                            Hold[h_[y_, next_]] /; HoldQ[h] :> (
+                                If[ TrueQ[CurrentValue["OptionKey"]],
+                                    With[{z = ReleaseLazyValue[y]},
+                                        newElement = z;
+                                        rest = Hold[Evaluate[next]]
+                                    ],
+                                    With[{z = LazyValueEval[y]},
+                                        newElement = z;
+                                        If[ LazyValueQ[z],
+                                            rest = Hold[h[z, next]],
+                                            rest = Hold[Evaluate[next]]
+                                        ]
+                                    ]
+                                ];
                             ),
-                            h_[next_] /; HoldQ[h]  :> (rest = next),
-                            LazyValue[next_] :> (rest = If[TrueQ[CurrentValue["OptionKey"]], ReleaseLazyValue[next], next]),
-                            _[] :> Clear[rest],
-                            y_ :> (newElement = y; Clear[rest])
+                            Hold[LazyValue[next_]] :> (If[TrueQ[CurrentValue["OptionKey"]], rest = Hold[Evaluate[ReleaseLazyValue[next]]]; release[rest], rest = Hold[Evaluate[next]]]),
+                            Hold[h_[next_]] /; HoldQ[h]  :> (rest = Hold[Evaluate[next]]),
+                            Hold[_[]] :> Clear[rest],
+                            Hold[y_] :> (newElement = y; Clear[rest])
                         }];
+                        release[rest];
                         If[ ValueQ[newElement],
                             Function[Null, # :=
                                 Row[{", ", newElement, Dynamic @ If[newPlaceholder === Null, Row[{}], newPlaceholder]}],
@@ -614,7 +670,7 @@ LazyListForm[cons : head_Symbol[Longest[x__], LazyValue[l_] | l_]] := DynamicMod
                     ],
                     Appearance -> None
                 ],
-                InputForm[rest]
+                DisableFormatting /@ HoldForm @@ rest
             ]}], Row[{}]]}
             ],
             "}"
@@ -645,6 +701,11 @@ LazyListBoxes[l_, form_] := With[{
 
 MakeBoxes[l_Cons, form_] ^:= LazyListBoxes[l, form]
 MakeBoxes[l_LazyList, form_] ^:= LazyListBoxes[l, form]
+
+
+LazyList[x : Except[_LazyValue], l_] /; TrueQ[$LazyCache] := LazyList[LazyValue[x], l]
+LazyList[x_, l : Except[_LazyValue]] /; TrueQ[$LazyCache] := LazyList[x, LazyValue[l]]
+LazyList[x : Except[_LazyValue], l : Except[_LazyValue]] /; TrueQ[$LazyCache] := LazyList[LazyValue[x], LazyValue[l]]
 
 
 (* UpValue dispatch *)
@@ -756,4 +817,6 @@ RotateLeft[LazyValue[x_], n_] ^:= LazyRotateLeft[x, n]
 RotateRight[cons_Cons, n_] ^:= LazyRotateRight[cons, n]
 RotateRight[cons_LazyList, n_] ^:= LazyRotateRight[cons, n]
 RotateRight[LazyValue[x_], n_] ^:= LazyRotateRight[x, n]
+
+Transpose[cons_LazyList] ^:= LazyTranspose[cons]
 
