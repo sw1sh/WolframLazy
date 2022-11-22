@@ -42,6 +42,7 @@ HoldPosition[___] := Missing["Position"]
 HoldPositionQ[expr_, i_] := With[{pos = HoldPosition[Unevaluated[expr]]}, MissingQ[pos] || MemberQ[pos, i]]
 
 SequenceHoldQ[sym_Symbol[___]] := MemberQ[Attributes[sym], SequenceHold]
+SequenceHoldQ[Verbatim[Function][_, _, attrs___][args___]] := MemberQ[attrs, SequenceHold]
 SequenceHoldQ[_] := False
 
 

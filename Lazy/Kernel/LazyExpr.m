@@ -253,13 +253,13 @@ LazyExpressionProp[l_LazyExpression, "ListEval", m : _Integer | Infinity : 1, n 
         restExpr = Extract[expr, restPos, HoldComplete];
         While[True,
             newRestExpr = LazyExpressionEvaluate[restExpr, l["HoldValue"], m, n];
-            If[newRestExpr === restExpr, Break[]];
             If[ MatchQ[newRestExpr, HoldComplete[Splice[_]]],
                 If[ MatchQ[newRestExpr, HoldComplete[Splice[_List]]],
                     newRestExpr = FlattenAt[newRestExpr, {{1}, {1, 1}}]
                 ];
                 Break[]
             ];
+            If[newRestExpr === restExpr, Break[]];
             restExpr = newRestExpr;
             Break[]
         ];
