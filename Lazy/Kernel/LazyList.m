@@ -105,6 +105,7 @@ LazyMapIndexed[f_, l_] := LazyMapThread[f, LazyList[l, LazyList[LazyMap[List, La
 
 
 LazyScan[f_, h_[]] := Null
+(* TODO: figure out recursion optimization (https://mathematica.stackexchange.com/questions/21746/what-tools-can-help-in-realizing-tail-recursion) *)
 LazyScan[f_, h_[x_, l___]] /; FlatHoldQ[h] := (f[x]; LazyScan[f, ArgEval[h[l]]])
 LazyScan[f_, h_[x_, l_]] /; HoldQ[h] := (f[x]; LazyScan[f, l])
 LazyScan[f_, h_[l_]] /; HoldFirstQ[h] := LazyScan[f, l]
@@ -549,7 +550,7 @@ LazyList /: f_Symbol[left___, cons_LazyList, right___] /; MemberQ[Attributes[f],
 LazyListToList[cons : _LazyList | _Cons | ((head : Except[LazyTree | Hold | HoldComplete, _Symbol])[___] /; HoldQ[head])] := With[{
     hh = Head[cons]
 },
-Block[{x = Hold[cons], l = {}},
+Block[{x = Hold[cons], l = {} (* consider DynamicArray *)},
     CheckAbort[
         While[
             MatchQ[x, Hold[_hh | _LazyValue | _LazyExpression]],
